@@ -1,325 +1,275 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { Modal, Box, IconButton, Typography, Button } from "@mui/material";
+﻿import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Dialog,
+  Typography,
+  IconButton,
+  Button,
+  Box,
+  Alert,
+} from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import FlipCameraIosIcon from "@mui/icons-material/FlipCameraIos";
+import FlashOnIcon from "@mui/icons-material/FlashOn";
+import FlashOffIcon from "@mui/icons-material/FlashOff";
 import { Html5Qrcode } from "html5-qrcode";
 
 export default function BarcodeScanner({
   open,
   onClose,
   onScan,
-  title = "Escanear Código",
+  title = "Escanear Codigo",
 }) {
-  const html5QrCodeRef = useRef(null);
-  const [cameras, setCameras] = useState([]);
-  const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const animFrameRef = useRef(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(null);
+  const [hasFlash, setHasFlash] = useState(false);
+  const [flashOn, setFlashOn] = useState(false);
 
-  const stopScanner = useCallback(async () => {
-    if (html5QrCodeRef.current && isScanning) {
-      try {
-        await html5QrCodeRef.current.stop();
-        html5QrCodeRef.current.clear();
-        html5QrCodeRef.current = null;
-        setIsScanning(false);
-      } catch (err) {
-        console.error("Erro ao parar scanner:", err);
+  const stopCamera = useCallback(() => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setIsScanning(false);
+    setFlashOn(false);
+    setHasFlash(false);
+  }, []);
+
+  const startScanLoop = useCallback(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const detect = async () => {
+      if (!streamRef.current) return;
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        if ("BarcodeDetector" in window) {
+          try {
+            const detector = new window.BarcodeDetector({
+              formats: [
+                "qr_code","ean_13","ean_8","code_128","code_39",
+                "code_93","upc_a","upc_e","itf","data_matrix","pdf417",
+              ],
+            });
+            const barcodes = await detector.detect(canvas);
+            if (barcodes.length > 0) {
+              const value = barcodes[0].rawValue;
+              stopCamera();
+              onScan(value);
+              onClose();
+              return;
+            }
+          } catch (_) {}
+        } else {
+          // Fallback: html5-qrcode file scan via blob
+          try {
+            canvas.toBlob(async (blob) => {
+              if (!blob) return;
+              const file = new File([blob], "frame.jpg", { type: "image/jpeg" });
+              const scanner = new Html5Qrcode("__hidden_scanner__");
+              try {
+                const result = await scanner.scanFile(file, false);
+                if (result) {
+                  stopCamera();
+                  onScan(result);
+                  onClose();
+                }
+              } catch (_) {
+              } finally {
+                scanner.clear();
+              }
+            }, "image/jpeg", 0.8);
+          } catch (_) {}
+        }
       }
-    }
-  }, [isScanning]);
+      animFrameRef.current = requestAnimationFrame(detect);
+    };
 
-  const tryFrontCamera = useCallback(async () => {
-    setError("");
+    animFrameRef.current = requestAnimationFrame(detect);
+  }, [onScan, onClose, stopCamera]);
+
+  const startCamera = useCallback(async () => {
+    setError(null);
     try {
-      const scanner = new Html5Qrcode("qr-reader");
-      html5QrCodeRef.current = scanner;
-
-      await scanner.start(
-        { facingMode: "user" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-          onScan(decodedText);
-          stopScanner();
-          onClose();
-        },
-        () => {},
-      );
-      setIsScanning(true);
-    } catch (err) {
-      setError(`Falha ao acessar câmera: ${err.message}`);
-    }
-  }, [onScan, onClose, stopScanner]);
-
-  const startScanner = useCallback(async () => {
-    setError("");
-
-    try {
-      // Aguardar o elemento estar disponível no DOM
-      await new Promise((resolve) => {
-        const checkElement = () => {
-          const element = document.getElementById("qr-reader");
-          if (element) {
-            resolve();
-          } else {
-            setTimeout(checkElement, 100);
-          }
-        };
-        checkElement();
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
       });
-
-      const scanner = new Html5Qrcode("qr-reader");
-      html5QrCodeRef.current = scanner;
-
-      // Configuração para mobile - usar facingMode
-      const config = {
-        fps: 10,
-        qrbox: { width: 250, height: 250 },
-      };
-
-      // Tentar câmera traseira primeiro
-      let cameraConfig = { facingMode: "environment" };
-
-      // Se já temos lista de câmeras, usar ID específico
-      if (cameras.length > 0) {
-        cameraConfig = cameras[currentCameraIndex]?.id || cameraConfig;
+      streamRef.current = mediaStream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+        await videoRef.current.play();
       }
-
-      await scanner.start(
-        cameraConfig,
-        config,
-        (decodedText) => {
-          // Sucesso ao escanear
-          onScan(decodedText);
-          stopScanner();
-          onClose();
-        },
-        () => {
-          // Ignorar erros de leitura contínua
-        },
-      );
-
+      // Flash
+      const track = mediaStream.getVideoTracks()[0];
+      const caps = track.getCapabilities?.() || {};
+      setHasFlash(caps.torch === true);
       setIsScanning(true);
-
-      // Obter lista de câmeras (assíncrono, não bloqueia)
-      Html5Qrcode.getCameras()
-        .then((devices) => {
-          if (devices && devices.length > 0) {
-            setCameras(devices);
-          }
-        })
-        .catch(() => {
-          // Ignorar erro ao listar câmeras
-        });
+      startScanLoop();
     } catch (err) {
-      console.error("Erro ao iniciar scanner:", err);
-
-      let errorMessage = "Erro ao acessar a câmera.";
-
-      if (
-        err.name === "NotAllowedError" ||
-        err.name === "PermissionDeniedError"
-      ) {
-        errorMessage =
-          "Permissão negada. Toque em 'Permitir' quando o navegador solicitar acesso à câmera.";
-      } else if (
-        err.name === "NotFoundError" ||
-        err.name === "DevicesNotFoundError"
-      ) {
-        errorMessage = "Nenhuma câmera encontrada no dispositivo.";
-      } else if (
-        err.name === "NotReadableError" ||
-        err.name === "TrackStartError"
-      ) {
-        errorMessage = "Câmera em uso por outro aplicativo. Feche outros apps.";
-      } else if (err.name === "OverconstrainedError") {
-        errorMessage = "Tentando câmera frontal...";
-        setError(errorMessage);
-        // Tentar câmera frontal
-        setTimeout(() => tryFrontCamera(), 1000);
-        return;
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-
-      setError(errorMessage);
+      let msg = "Nao foi possivel acessar a camera.";
+      if (err.name === "NotAllowedError") msg = "Permissao negada. Permita acesso a camera nas configuracoes do navegador.";
+      else if (err.name === "NotFoundError") msg = "Nenhuma camera encontrada.";
+      else if (err.name === "NotReadableError") msg = "Camera em uso por outro app.";
+      setError(msg);
     }
-  }, [
-    cameras,
-    currentCameraIndex,
-    onScan,
-    onClose,
-    stopScanner,
-    tryFrontCamera,
-  ]);
+  }, [startScanLoop]);
+
+  const toggleFlash = async () => {
+    if (!streamRef.current || !hasFlash) return;
+    const track = streamRef.current.getVideoTracks()[0];
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !flashOn }] });
+      setFlashOn((v) => !v);
+    } catch (_) {}
+  };
+
+  const handleClose = useCallback(() => {
+    stopCamera();
+    onClose();
+  }, [stopCamera, onClose]);
 
   useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line
-      startScanner();
-    } else {
-      stopScanner();
-    }
-
-    return () => {
-      stopScanner();
-    };
+    if (open) startCamera();
+    else stopCamera();
+    return () => stopCamera();
     // eslint-disable-next-line
   }, [open]);
 
-  const switchCamera = async () => {
-    if (cameras.length <= 1) return;
-    await stopScanner();
-    setCurrentCameraIndex((prev) => (prev + 1) % cameras.length);
-  };
-
   return (
-    <Modal
-      open={open}
-      onClose={() => {
-        stopScanner();
-        onClose();
-      }}
-      sx={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Box
-        sx={{
-          width: { xs: "95%", sm: "500px" },
-          bgcolor: "background.paper",
-          borderRadius: 2,
-          boxShadow: 24,
-          p: 3,
-          position: "relative",
-        }}
-      >
-        {/* Botão fechar */}
-        <IconButton
-          onClick={() => {
-            stopScanner();
-            onClose();
-          }}
+    <>
+      {/* div oculto exigido pelo fallback html5-qrcode */}
+      <div id="__hidden_scanner__" style={{ display: "none" }} />
+
+      <Dialog open={open} onClose={handleClose} fullScreen PaperProps={{ sx: { bgcolor: "#000" } }}>
+        {/* Barra Superior */}
+        <Box
           sx={{
-            position: "absolute",
-            top: 8,
-            right: 8,
-            zIndex: 10,
+            position: "absolute", top: 0, left: 0, right: 0, zIndex: 10,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            px: 2, pt: "max(env(safe-area-inset-top), 12px)", pb: 1.5,
+            background: "linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)",
           }}
         >
-          <CloseIcon />
-        </IconButton>
-
-        {/* Título */}
-        <Typography variant="h6" mb={2} textAlign="center">
-          {title}
-        </Typography>
-
-        {/* Erro */}
-        {error && (
-          <Box
-            sx={{
-              bgcolor: "error.main",
-              color: "white",
-              p: 2,
-              borderRadius: 1,
-              mb: 2,
-              textAlign: "center",
-            }}
-          >
-            <Typography variant="body2" fontWeight="bold" mb={1}>
-              {error}
-            </Typography>
-
-            {error.includes("Permissão") && (
-              <Typography variant="caption" sx={{ display: "block", mb: 1 }}>
-                💡 Quando solicitado, toque em "Permitir" para acessar a câmera.
-              </Typography>
+          <Typography variant="h6" sx={{ color: "#fff", fontWeight: "bold" }}>
+            {title}
+          </Typography>
+          <Box sx={{ display: "flex", gap: 0.5 }}>
+            {hasFlash && (
+              <IconButton onClick={toggleFlash} sx={{ color: flashOn ? "#FFD600" : "#fff" }}>
+                {flashOn ? <FlashOnIcon /> : <FlashOffIcon />}
+              </IconButton>
             )}
+            <IconButton onClick={handleClose} sx={{ color: "#fff" }}>
+              <CloseIcon />
+            </IconButton>
+          </Box>
+        </Box>
 
-            <Box sx={{ display: "flex", gap: 1, mt: 2 }}>
-              {error.includes("Permissão") && (
-                <Button
-                  variant="contained"
-                  size="small"
-                  fullWidth
-                  onClick={() => {
-                    setError("");
-                    startScanner();
-                  }}
-                  sx={{
-                    bgcolor: "white",
-                    color: "success.main",
-                    fontWeight: "bold",
-                    "&:hover": { bgcolor: "success.light", color: "white" },
-                  }}
-                >
-                  🔄 Tentar Novamente
-                </Button>
-              )}
+        {error ? (
+          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", p: 3, gap: 2 }}>
+            <Alert severity="error" sx={{ width: "100%" }}>{error}</Alert>
+            <Button variant="contained" onClick={() => { setError(null); startCamera(); }}>
+              Tentar Novamente
+            </Button>
+            <Button variant="outlined" onClick={handleClose} sx={{ color: "#fff", borderColor: "rgba(255,255,255,0.4)" }}>
+              Fechar
+            </Button>
+          </Box>
+        ) : (
+          <Box sx={{ position: "relative", width: "100%", height: "100%" }}>
+            {/* Video */}
+            <video
+              ref={videoRef}
+              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+              playsInline
+              muted
+            />
+            {/* Canvas oculto para leitura */}
+            <canvas ref={canvasRef} style={{ display: "none" }} />
 
-              <Button
-                variant="contained"
-                size="small"
-                fullWidth
-                onClick={() => {
-                  setError("");
-                  onClose();
-                }}
+            {/* Overlay escuro */}
+            <Box
+              sx={{
+                position: "absolute", inset: 0, pointerEvents: "none",
+                background: "linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.4) 100%)",
+              }}
+            />
+
+            {/* Viewfinder */}
+            <Box
+              sx={{
+                position: "absolute",
+                top: "50%", left: "50%",
+                transform: "translate(-50%, -50%)",
+                width: { xs: "78%", sm: "340px" },
+                height: { xs: "160px", sm: "180px" },
+                pointerEvents: "none",
+                overflow: "hidden",
+                "&::before, &::after": { content: '""', position: "absolute" },
+              }}
+            >
+              {/* Cantos */}
+              {[
+                { top: 0, left: 0, borderTop: "3px solid #4fc3f7", borderLeft: "3px solid #4fc3f7" },
+                { top: 0, right: 0, borderTop: "3px solid #4fc3f7", borderRight: "3px solid #4fc3f7" },
+                { bottom: 0, left: 0, borderBottom: "3px solid #4fc3f7", borderLeft: "3px solid #4fc3f7" },
+                { bottom: 0, right: 0, borderBottom: "3px solid #4fc3f7", borderRight: "3px solid #4fc3f7" },
+              ].map((s, i) => (
+                <Box key={i} sx={{ position: "absolute", width: 24, height: 24, ...s }} />
+              ))}
+
+              {/* Linha de scan */}
+              <Box
                 sx={{
-                  bgcolor: "white",
-                  color: "error.main",
-                  fontWeight: "bold",
-                  "&:hover": { bgcolor: "grey.200" },
+                  position: "absolute",
+                  left: 0, right: 0,
+                  height: "3px",
+                  background: "linear-gradient(90deg, transparent, #4fc3f7, #00e5ff, #4fc3f7, transparent)",
+                  boxShadow: "0 0 8px #00e5ff",
+                  animation: "scanline 2s ease-in-out infinite",
+                  "@keyframes scanline": {
+                    "0%": { top: 0, opacity: 1 },
+                    "45%": { top: "calc(100% - 3px)", opacity: 1 },
+                    "50%": { top: "calc(100% - 3px)", opacity: 0 },
+                    "51%": { top: 0, opacity: 0 },
+                    "55%": { opacity: 1 },
+                    "100%": { top: 0, opacity: 1 },
+                  },
                 }}
-              >
-                Fechar
-              </Button>
+              />
             </Box>
+
+            {/* Instrucoes */}
+            <Typography
+              variant="body2"
+              sx={{
+                position: "absolute",
+                bottom: "18%",
+                left: 0, right: 0,
+                textAlign: "center",
+                color: "rgba(255,255,255,0.8)",
+                px: 3,
+              }}
+            >
+              Aponte para o codigo de barras ou QR code
+            </Typography>
           </Box>
         )}
-
-        {/* Área do scanner */}
-        <Box
-          id="qr-reader"
-          sx={{
-            width: "100%",
-            borderRadius: 2,
-            overflow: "hidden",
-            display: error ? "none" : "block",
-            "& video": {
-              borderRadius: 2,
-            },
-          }}
-        />
-
-        {/* Trocar câmera */}
-        {cameras.length > 1 && !error && (
-          <Button
-            startIcon={<FlipCameraIosIcon />}
-            onClick={switchCamera}
-            fullWidth
-            variant="outlined"
-            sx={{ mt: 2 }}
-          >
-            Trocar Câmera
-          </Button>
-        )}
-
-        {!error && (
-          <Typography
-            variant="caption"
-            display="block"
-            textAlign="center"
-            mt={2}
-            color="text.secondary"
-          >
-            📷 Aponte a câmera para o código de barras ou QR code
-          </Typography>
-        )}
-      </Box>
-    </Modal>
+      </Dialog>
+    </>
   );
 }
+
