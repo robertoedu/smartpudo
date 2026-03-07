@@ -1,33 +1,38 @@
-﻿import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
   Dialog,
-  Typography,
-  IconButton,
+  DialogTitle,
+  DialogContent,
   Button,
   Box,
+  Typography,
+  IconButton,
   Alert,
 } from "@mui/material";
-import CloseIcon from "@mui/icons-material/Close";
-import FlipCameraIosIcon from "@mui/icons-material/FlipCameraIos";
-import FlashOnIcon from "@mui/icons-material/FlashOn";
-import FlashOffIcon from "@mui/icons-material/FlashOff";
+import {
+  Close as CloseIcon,
+  CameraAlt as CameraIcon,
+  FlashOn as FlashOnIcon,
+  FlashOff as FlashOffIcon,
+} from "@mui/icons-material";
 import { Html5Qrcode } from "html5-qrcode";
 
-export default function BarcodeScanner({
+const BarcodeScanner = ({
   open,
   onClose,
   onScan,
-  title = "Escanear Codigo",
-}) {
+  title = "Escanear Código",
+}) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const animFrameRef = useRef(null);
-  const [isScanning, setIsScanning] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState(null);
   const [hasFlash, setHasFlash] = useState(false);
   const [flashOn, setFlashOn] = useState(false);
 
+  // Para a câmera e o loop de scan
   const stopCamera = useCallback(() => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
@@ -37,12 +42,13 @@ export default function BarcodeScanner({
       streamRef.current.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
-    setIsScanning(false);
+    setScanning(false);
     setFlashOn(false);
     setHasFlash(false);
   }, []);
 
-  const startScanLoop = useCallback(() => {
+  // Loop automático de leitura de frames
+  const startScanLoop = useCallback((onResult) => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
@@ -52,59 +58,92 @@ export default function BarcodeScanner({
       if (video.readyState === video.HAVE_ENOUGH_DATA) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas
+          .getContext("2d")
+          .drawImage(video, 0, 0, canvas.width, canvas.height);
 
         if ("BarcodeDetector" in window) {
           try {
             const detector = new window.BarcodeDetector({
               formats: [
-                "qr_code","ean_13","ean_8","code_128","code_39",
-                "code_93","upc_a","upc_e","itf","data_matrix","pdf417",
+                "qr_code",
+                "ean_13",
+                "ean_8",
+                "code_128",
+                "code_39",
+                "code_93",
+                "upc_a",
+                "upc_e",
+                "itf",
+                "data_matrix",
+                "pdf417",
               ],
             });
             const barcodes = await detector.detect(canvas);
             if (barcodes.length > 0) {
-              const value = barcodes[0].rawValue;
-              stopCamera();
-              onScan(value);
-              onClose();
+              onResult(barcodes[0].rawValue);
               return;
             }
-          } catch (_) {}
+          } catch (e) {
+            void e;
+          }
         } else {
-          // Fallback: html5-qrcode file scan via blob
+          // Fallback: html5-qrcode
           try {
-            canvas.toBlob(async (blob) => {
-              if (!blob) return;
-              const file = new File([blob], "frame.jpg", { type: "image/jpeg" });
-              const scanner = new Html5Qrcode("__hidden_scanner__");
-              try {
-                const result = await scanner.scanFile(file, false);
-                if (result) {
-                  stopCamera();
-                  onScan(result);
-                  onClose();
-                }
-              } catch (_) {
-              } finally {
-                scanner.clear();
-              }
-            }, "image/jpeg", 0.8);
-          } catch (_) {}
+            await new Promise((resolve) => {
+              canvas.toBlob(
+                async (blob) => {
+                  if (!blob) {
+                    resolve();
+                    return;
+                  }
+                  const file = new File([blob], "frame.jpg", {
+                    type: "image/jpeg",
+                  });
+                  const scanner = new Html5Qrcode("__bcs_hidden__");
+                  try {
+                    const result = await scanner.scanFile(file, false);
+                    if (result) {
+                      onResult(result);
+                      resolve();
+                      return;
+                    }
+                  } catch (e) {
+                    void e;
+                  } finally {
+                    try {
+                      scanner.clear();
+                    } catch (e2) {
+                      void e2;
+                    }
+                    resolve();
+                  }
+                },
+                "image/jpeg",
+                0.85,
+              );
+            });
+            if (!streamRef.current) return;
+          } catch (e) {
+            void e;
+          }
         }
       }
       animFrameRef.current = requestAnimationFrame(detect);
     };
-
     animFrameRef.current = requestAnimationFrame(detect);
-  }, [onScan, onClose, stopCamera]);
+  }, []);
 
+  // Inicia a câmera
   const startCamera = useCallback(async () => {
     setError(null);
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         audio: false,
       });
       streamRef.current = mediaStream;
@@ -112,28 +151,38 @@ export default function BarcodeScanner({
         videoRef.current.srcObject = mediaStream;
         await videoRef.current.play();
       }
-      // Flash
       const track = mediaStream.getVideoTracks()[0];
       const caps = track.getCapabilities?.() || {};
       setHasFlash(caps.torch === true);
-      setIsScanning(true);
-      startScanLoop();
+      setScanning(true);
+      startScanLoop((decoded) => {
+        stopCamera();
+        onScan(decoded);
+        onClose();
+      });
     } catch (err) {
-      let msg = "Nao foi possivel acessar a camera.";
-      if (err.name === "NotAllowedError") msg = "Permissao negada. Permita acesso a camera nas configuracoes do navegador.";
-      else if (err.name === "NotFoundError") msg = "Nenhuma camera encontrada.";
-      else if (err.name === "NotReadableError") msg = "Camera em uso por outro app.";
+      let msg = "Não foi possível acessar a câmera.";
+      if (err.name === "NotAllowedError")
+        msg =
+          "Permissão negada. Permita o acesso à câmera nas configurações do navegador.";
+      else if (err.name === "NotFoundError")
+        msg = "Nenhuma câmera encontrada no dispositivo.";
+      else if (err.name === "NotReadableError")
+        msg = "Câmera em uso por outro aplicativo.";
       setError(msg);
     }
-  }, [startScanLoop]);
+  }, [startScanLoop, stopCamera, onScan, onClose]);
 
+  // Alternar flash
   const toggleFlash = async () => {
     if (!streamRef.current || !hasFlash) return;
     const track = streamRef.current.getVideoTracks()[0];
     try {
       await track.applyConstraints({ advanced: [{ torch: !flashOn }] });
       setFlashOn((v) => !v);
-    } catch (_) {}
+    } catch (e) {
+      void e;
+    }
   };
 
   const handleClose = useCallback(() => {
@@ -141,6 +190,7 @@ export default function BarcodeScanner({
     onClose();
   }, [stopCamera, onClose]);
 
+  // Iniciar/parar scanner quando o dialog abre/fecha
   useEffect(() => {
     if (open) startCamera();
     else stopCamera();
@@ -150,25 +200,34 @@ export default function BarcodeScanner({
 
   return (
     <>
-      {/* div oculto exigido pelo fallback html5-qrcode */}
-      <div id="__hidden_scanner__" style={{ display: "none" }} />
+      {/* div oculto para fallback html5-qrcode */}
+      <div id="__bcs_hidden__" style={{ display: "none" }} />
 
-      <Dialog open={open} onClose={handleClose} fullScreen PaperProps={{ sx: { bgcolor: "#000" } }}>
-        {/* Barra Superior */}
-        <Box
+      <Dialog
+        open={open}
+        onClose={handleClose}
+        fullScreen
+        PaperProps={{ sx: { backgroundColor: "#000", color: "#fff" } }}
+      >
+        <DialogTitle
           sx={{
-            position: "absolute", top: 0, left: 0, right: 0, zIndex: 10,
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            px: 2, pt: "max(env(safe-area-inset-top), 12px)", pb: 1.5,
-            background: "linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            backgroundColor: "rgba(0,0,0,0.8)",
+            color: "#fff",
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000,
+            pt: "max(env(safe-area-inset-top), 12px)",
           }}
         >
-          <Typography variant="h6" sx={{ color: "#fff", fontWeight: "bold" }}>
-            {title}
-          </Typography>
-          <Box sx={{ display: "flex", gap: 0.5 }}>
+          <Typography variant="h6">{title}</Typography>
+          <Box>
             {hasFlash && (
-              <IconButton onClick={toggleFlash} sx={{ color: flashOn ? "#FFD600" : "#fff" }}>
+              <IconButton onClick={toggleFlash} sx={{ color: "#fff", mr: 1 }}>
                 {flashOn ? <FlashOnIcon /> : <FlashOffIcon />}
               </IconButton>
             )}
@@ -176,100 +235,147 @@ export default function BarcodeScanner({
               <CloseIcon />
             </IconButton>
           </Box>
-        </Box>
+        </DialogTitle>
 
-        {error ? (
-          <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", p: 3, gap: 2 }}>
-            <Alert severity="error" sx={{ width: "100%" }}>{error}</Alert>
-            <Button variant="contained" onClick={() => { setError(null); startCamera(); }}>
-              Tentar Novamente
-            </Button>
-            <Button variant="outlined" onClick={handleClose} sx={{ color: "#fff", borderColor: "rgba(255,255,255,0.4)" }}>
-              Fechar
-            </Button>
-          </Box>
-        ) : (
-          <Box sx={{ position: "relative", width: "100%", height: "100%" }}>
-            {/* Video */}
-            <video
-              ref={videoRef}
-              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-              playsInline
-              muted
-            />
-            {/* Canvas oculto para leitura */}
-            <canvas ref={canvasRef} style={{ display: "none" }} />
-
-            {/* Overlay escuro */}
+        <DialogContent sx={{ p: 0, position: "relative", overflow: "hidden" }}>
+          {error ? (
             <Box
               sx={{
-                position: "absolute", inset: 0, pointerEvents: "none",
-                background: "linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.4) 100%)",
-              }}
-            />
-
-            {/* Viewfinder */}
-            <Box
-              sx={{
-                position: "absolute",
-                top: "50%", left: "50%",
-                transform: "translate(-50%, -50%)",
-                width: { xs: "78%", sm: "340px" },
-                height: { xs: "160px", sm: "180px" },
-                pointerEvents: "none",
-                overflow: "hidden",
-                "&::before, &::after": { content: '""', position: "absolute" },
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                height: "100vh",
+                p: 3,
               }}
             >
-              {/* Cantos */}
-              {[
-                { top: 0, left: 0, borderTop: "3px solid #4fc3f7", borderLeft: "3px solid #4fc3f7" },
-                { top: 0, right: 0, borderTop: "3px solid #4fc3f7", borderRight: "3px solid #4fc3f7" },
-                { bottom: 0, left: 0, borderBottom: "3px solid #4fc3f7", borderLeft: "3px solid #4fc3f7" },
-                { bottom: 0, right: 0, borderBottom: "3px solid #4fc3f7", borderRight: "3px solid #4fc3f7" },
-              ].map((s, i) => (
-                <Box key={i} sx={{ position: "absolute", width: 24, height: 24, ...s }} />
-              ))}
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {error}
+              </Alert>
+              <Button
+                variant="contained"
+                onClick={startCamera}
+                startIcon={<CameraIcon />}
+                disabled={scanning}
+              >
+                Tentar Novamente
+              </Button>
+            </Box>
+          ) : (
+            <Box sx={{ position: "relative", width: "100%", height: "100vh" }}>
+              {/* Vídeo da câmera */}
+              <video
+                ref={videoRef}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                }}
+                playsInline
+                muted
+              />
 
-              {/* Linha de scan */}
+              {/* Canvas oculto para captura */}
+              <canvas ref={canvasRef} style={{ display: "none" }} />
+
+              {/* Overlay de escaneamento */}
               <Box
                 sx={{
                   position: "absolute",
-                  left: 0, right: 0,
-                  height: "3px",
-                  background: "linear-gradient(90deg, transparent, #4fc3f7, #00e5ff, #4fc3f7, transparent)",
-                  boxShadow: "0 0 8px #00e5ff",
-                  animation: "scanline 2s ease-in-out infinite",
-                  "@keyframes scanline": {
-                    "0%": { top: 0, opacity: 1 },
-                    "45%": { top: "calc(100% - 3px)", opacity: 1 },
-                    "50%": { top: "calc(100% - 3px)", opacity: 0 },
-                    "51%": { top: 0, opacity: 0 },
-                    "55%": { opacity: 1 },
-                    "100%": { top: 0, opacity: 1 },
-                  },
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  background:
+                    "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.5) 100%)",
+                  pointerEvents: "none",
                 }}
-              />
-            </Box>
+              >
+                {/* Área de escaneamento */}
+                <Box
+                  sx={{
+                    width: "80%",
+                    height: "200px",
+                    border: "2px solid #fff",
+                    borderRadius: 2,
+                    position: "relative",
+                    "&::before": {
+                      content: '""',
+                      position: "absolute",
+                      top: "50%",
+                      left: 0,
+                      right: 0,
+                      height: "2px",
+                      background:
+                        "linear-gradient(90deg, transparent, #ff4444, transparent)",
+                      animation: "scan 2s ease-in-out infinite",
+                    },
+                    "@keyframes scan": {
+                      "0%": { transform: "translateY(-100px)" },
+                      "100%": { transform: "translateY(100px)" },
+                    },
+                  }}
+                />
+              </Box>
 
-            {/* Instrucoes */}
-            <Typography
-              variant="body2"
-              sx={{
-                position: "absolute",
-                bottom: "18%",
-                left: 0, right: 0,
-                textAlign: "center",
-                color: "rgba(255,255,255,0.8)",
-                px: 3,
-              }}
-            >
-              Aponte para o codigo de barras ou QR code
-            </Typography>
-          </Box>
-        )}
+              {/* Instruções */}
+              <Box
+                sx={{
+                  position: "absolute",
+                  bottom: 120,
+                  left: 0,
+                  right: 0,
+                  textAlign: "center",
+                  p: 2,
+                }}
+              >
+                <Typography variant="h6" sx={{ mb: 1, color: "#fff" }}>
+                  Aponte para o código de barras
+                </Typography>
+                <Typography
+                  variant="body2"
+                  sx={{ color: "#fff", opacity: 0.8 }}
+                >
+                  Posicione o código dentro da área marcada
+                </Typography>
+              </Box>
+
+              {/* Botão de captura manual */}
+              <Box
+                sx={{
+                  position: "absolute",
+                  bottom: 30,
+                  left: 0,
+                  right: 0,
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+              >
+                <Button
+                  variant="contained"
+                  size="large"
+                  onClick={startCamera}
+                  sx={{
+                    backgroundColor: "#fff",
+                    color: "#000",
+                    borderRadius: "50px",
+                    px: 4,
+                    py: 1.5,
+                    "&:hover": { backgroundColor: "#f0f0f0" },
+                  }}
+                >
+                  Iniciar Câmera
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
       </Dialog>
     </>
   );
-}
+};
 
+export default BarcodeScanner;
