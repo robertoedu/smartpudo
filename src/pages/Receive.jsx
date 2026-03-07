@@ -8,8 +8,11 @@ import {
   Chip,
   Divider,
   Button,
+  TextField,
+  IconButton,
 } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
+import DeleteIcon from "@mui/icons-material/Delete";
 import ScanInput from "../components/ScanInput";
 import BarcodeScanner from "../components/BarcodeScanner";
 import FeedbackSnackbar from "../components/FeedbackSnackbar";
@@ -26,6 +29,35 @@ export default function Receive() {
   const [scannerType, setScannerType] = useState(""); // "location" ou "product"
   const productInputRef = useRef(null);
   const locationInputRef = useRef(null);
+  const [editingBatchIndex, setEditingBatchIndex] = useState(null);
+  const [editingBatchValue, setEditingBatchValue] = useState("");
+
+  const handleStartEditBatch = (index) => {
+    setEditingBatchIndex(index);
+    setEditingBatchValue(batchProducts[index]);
+  };
+
+  const handleSaveBatchEdit = (index) => {
+    const value = editingBatchValue.trim();
+    if (value) {
+      setBatchProducts((prev) => {
+        const updated = [...prev];
+        updated[index] = value;
+        return updated;
+      });
+    }
+    setEditingBatchIndex(null);
+    setEditingBatchValue("");
+  };
+
+  const handleCancelBatchEdit = () => {
+    setEditingBatchIndex(null);
+    setEditingBatchValue("");
+  };
+
+  const handleRemoveBatchItem = (index) => {
+    setBatchProducts((prev) => prev.filter((_, i) => i !== index));
+  };
 
   // Foca no campo de local ao carregar a página
   useEffect(() => {
@@ -81,6 +113,11 @@ export default function Receive() {
             setReceivedProducts((prev) => [newEntry, ...prev].slice(0, 10));
             showSuccess("✅ Produto recebido com sucesso!");
             setProduct("");
+            // Se local não está fixado, limpa e volta o foco para o campo de local
+            if (!batchMode) {
+              setLocation("");
+              setTimeout(() => locationInputRef.current?.focus(), 50);
+            }
           }
         } catch (error) {
           console.error("Erro ao receber produto:", error);
@@ -207,6 +244,11 @@ export default function Receive() {
               },
               ...prev.slice(0, 9),
             ]);
+            // Se local não está fixado, limpa e volta o foco para o campo de local
+            if (!batchMode) {
+              setLocation("");
+              setTimeout(() => locationInputRef.current?.focus(), 100);
+            }
           } catch (error) {
             console.error("Erro ao receber produto:", error);
             showError(
@@ -240,18 +282,13 @@ export default function Receive() {
               ? "Local fixado para recebimento em lote"
               : "Bipe ou digite o código do local primeiro"
           }
-          disabled={batchMode && location.trim() !== ""}
           onCameraClick={handleOpenLocationScanner}
           inputRef={locationInputRef}
         />
 
         <FormControlLabel
           control={
-            <Checkbox
-              checked={batchMode}
-              onChange={handleBatchModeToggle}
-              disabled={!location.trim()}
-            />
+            <Checkbox checked={batchMode} onChange={handleBatchModeToggle} />
           }
           label={
             batchMode && batchProducts.length > 0
@@ -277,25 +314,127 @@ export default function Receive() {
         />
 
         {batchMode && batchProducts.length > 0 && (
-          <Button
-            variant="contained"
-            color="primary"
-            size="large"
-            fullWidth
-            startIcon={<SendIcon />}
-            onClick={handleSendBatch}
-            sx={{
-              py: 1.5,
-              fontSize: "1.1rem",
-              fontWeight: "bold",
-            }}
-          >
-            Enviar Lote ({batchProducts.length}{" "}
-            {batchProducts.length === 1 ? "produto" : "produtos"})
-          </Button>
+          <Paper sx={{ p: 2 }}>
+            <Button
+              variant="contained"
+              color="primary"
+              size="large"
+              fullWidth
+              startIcon={<SendIcon />}
+              onClick={handleSendBatch}
+              sx={{ mb: 2, py: 1.5, fontSize: "1.1rem", fontWeight: "bold" }}
+            >
+              Enviar Lote ({batchProducts.length}{" "}
+              {batchProducts.length === 1 ? "produto" : "produtos"})
+            </Button>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 1,
+              }}
+            >
+              <Typography variant="h6">Produtos no Lote</Typography>
+              <Chip
+                label={`${batchProducts.length} ${batchProducts.length === 1 ? "produto" : "produtos"}`}
+                color="primary"
+                size="small"
+              />
+            </Box>
+            <Divider sx={{ mb: 1 }} />
+            {/* Cabeçalho da tabela */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                px: 1,
+                py: 0.5,
+                gap: 1,
+              }}
+            >
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ width: 28 }}
+              >
+                #
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ flex: 1 }}
+              >
+                Código
+              </Typography>
+              <Box sx={{ width: 34 }} />
+            </Box>
+            <Box sx={{ maxHeight: 260, overflowY: "auto" }}>
+              {batchProducts.map((code, index) => (
+                <Box
+                  key={index}
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 1,
+                    px: 1,
+                    py: 0.25,
+                    borderRadius: 1,
+                    backgroundColor:
+                      index % 2 === 0
+                        ? "rgba(144, 202, 249, 0.06)"
+                        : "transparent",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ width: 28, flexShrink: 0 }}
+                  >
+                    {index + 1}
+                  </Typography>
+                  {editingBatchIndex === index ? (
+                    <TextField
+                      size="small"
+                      value={editingBatchValue}
+                      onChange={(e) => setEditingBatchValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveBatchEdit(index);
+                        if (e.key === "Escape") handleCancelBatchEdit();
+                      }}
+                      onBlur={() => handleSaveBatchEdit(index)}
+                      autoFocus
+                      sx={{ flex: 1 }}
+                      inputProps={{
+                        style: { fontWeight: "bold", fontSize: "0.875rem" },
+                      }}
+                    />
+                  ) : (
+                    <Typography
+                      variant="body2"
+                      fontWeight="bold"
+                      sx={{ flex: 1, cursor: "pointer", py: 0.5 }}
+                      onClick={() => handleStartEditBatch(index)}
+                      title="Clique para editar"
+                    >
+                      {code}
+                    </Typography>
+                  )}
+                  <IconButton
+                    size="small"
+                    onClick={() => handleRemoveBatchItem(index)}
+                    color="error"
+                    tabIndex={-1}
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+              ))}
+            </Box>
+          </Paper>
         )}
 
-        {receivedProducts.length > 0 && (
+        {!batchMode && receivedProducts.length > 0 && (
           <Paper sx={{ p: 2 }}>
             <Box
               sx={{

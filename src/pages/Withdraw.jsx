@@ -19,8 +19,15 @@ export default function Withdraw() {
     try {
       const { data } = await api.get(`/api/products/${productCode}/location`);
 
-      // Espera-se que a API retorne: { code: "A01-03", name: "Prateleira A / Nível 3" }
-      setFoundLocation(data);
+      // API pode retornar { location: { code, name } } ou { code, name } diretamente
+      const normalized = data?.location ?? (data?.code ? data : null);
+      if (!normalized) {
+        showWarning("⚠️ Produto sem localização cadastrada");
+        setFoundLocation(null);
+        setReadyToConfirm(false);
+        return;
+      }
+      setFoundLocation(normalized);
       setReadyToConfirm(true);
     } catch (error) {
       console.error("Erro ao buscar produto:", error);
@@ -59,7 +66,7 @@ export default function Withdraw() {
     try {
       await api.post("/api/products/withdraw", {
         productCode: product,
-        locationCode: foundLocation.code,
+        locationCode: foundLocation?.code,
       });
 
       showSuccess("✅ Produto retirado com sucesso!");
@@ -108,7 +115,7 @@ export default function Withdraw() {
           autoFocus
           helperText={
             readyToConfirm
-              ? "Bipe novamente ou pressione Enter para confirmar"
+              ? "Pressione Enter para confirmar"
               : "Bipe o produto para buscar a localização"
           }
         />
@@ -157,17 +164,17 @@ export default function Withdraw() {
                 Localização
               </Typography>
               <Typography variant="h4" color="success.main" fontWeight="bold">
-                {foundLocation.location.code}
+                {foundLocation?.code}
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mt: 1 }}>
-                {foundLocation.location.name}
+                {foundLocation?.name}
               </Typography>
             </Box>
 
             {readyToConfirm && (
               <Alert severity="info" sx={{ borderRadius: 2, mt: 2 }}>
                 <Typography variant="body1" fontWeight="bold">
-                  ⚡ Bipe novamente para confirmar a retirada
+                  ⚡ Pressione Enter ou confirme a retirada
                 </Typography>
               </Alert>
             )}
@@ -177,7 +184,7 @@ export default function Withdraw() {
 
       {foundLocation && (
         <ConfirmBar
-          text={`Produto: ${product} será retirado de ${foundLocation.location.code}`}
+          text={`Produto: ${product} será retirado de ${foundLocation.code}`}
           primaryLabel="Confirmar retirada"
           onPrimary={handleConfirm}
           secondaryLabel="Limpar"
