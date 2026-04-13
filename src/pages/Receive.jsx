@@ -14,7 +14,6 @@ import {
 import SendIcon from "@mui/icons-material/Send";
 import DeleteIcon from "@mui/icons-material/Delete";
 import ScanInput from "../components/ScanInput";
-import BarcodeScanner from "../components/BarcodeScanner";
 import FeedbackSnackbar from "../components/FeedbackSnackbar";
 import { useFeedback } from "../components/useFeedback";
 import api from "../services/api";
@@ -25,8 +24,6 @@ export default function Receive() {
   const [batchMode, setBatchMode] = useState(false);
   const [receivedProducts, setReceivedProducts] = useState([]);
   const [batchProducts, setBatchProducts] = useState([]); // Produtos acumulados no modo lote
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [scannerType, setScannerType] = useState(""); // "location" ou "product"
   const productInputRef = useRef(null);
   const locationInputRef = useRef(null);
   const [editingBatchIndex, setEditingBatchIndex] = useState(null);
@@ -196,71 +193,6 @@ export default function Receive() {
     }
   };
 
-  // Handlers para câmera
-  const handleOpenLocationScanner = () => {
-    setScannerType("location");
-    setScannerOpen(true);
-  };
-
-  const handleOpenProductScanner = () => {
-    setScannerType("product");
-    setScannerOpen(true);
-  };
-
-  const handleScanResult = async (scannedCode) => {
-    if (scannerType === "location") {
-      setLocation(scannedCode);
-      // Auto-foca no campo de produto após definir local
-      setTimeout(() => productInputRef.current?.focus(), 100);
-    } else if (scannerType === "product") {
-      // Simula o comportamento do Enter no campo de produto
-      const value = scannedCode.trim();
-
-      // Se tentou escanear produto sem definir local
-      if (value && !location.trim()) {
-        showError("⚠️ Defina o local antes de bipar produtos!");
-        return;
-      }
-
-      // Lógica de recebimento (igual ao handleProductKeyDown)
-      if (value) {
-        if (batchMode) {
-          // Modo lote: acumula produtos
-          setBatchProducts((prev) => [...prev, value]);
-          showSuccess(`📦 Produto ${value} adicionado ao lote!`);
-        } else {
-          // Modo normal: envia imediatamente
-          try {
-            await api.post(`/api/locations/${location}/products`, {
-              productCode: value,
-            });
-
-            showSuccess(`✅ Produto ${value} recebido no local ${location}!`);
-            setReceivedProducts((prev) => [
-              {
-                product: value,
-                location: location,
-                timestamp: new Date().toLocaleTimeString("pt-BR"),
-              },
-              ...prev.slice(0, 9),
-            ]);
-            // Se local não está fixado, limpa e volta o foco para o campo de local
-            if (!batchMode) {
-              setLocation("");
-              setTimeout(() => locationInputRef.current?.focus(), 100);
-            }
-          } catch (error) {
-            console.error("Erro ao receber produto:", error);
-            showError(
-              `❌ Erro ao receber produto: ${error.response?.data?.message || error.message}`,
-            );
-          }
-        }
-        setProduct("");
-      }
-    }
-  };
-
   return (
     <Box>
       <Box
@@ -282,7 +214,6 @@ export default function Receive() {
               ? "Local fixado para recebimento em lote"
               : "Bipe ou digite o código do local primeiro"
           }
-          onCameraClick={handleOpenLocationScanner}
           inputRef={locationInputRef}
         />
 
@@ -310,7 +241,6 @@ export default function Receive() {
               : "Defina o local primeiro"
           }
           inputRef={productInputRef}
-          onCameraClick={handleOpenProductScanner}
         />
 
         {batchMode && batchProducts.length > 0 && (
@@ -486,15 +416,6 @@ export default function Receive() {
       </Box>
 
       {/* ConfirmBar removido - salvamento é automático */}
-
-      <BarcodeScanner
-        open={scannerOpen}
-        onClose={() => setScannerOpen(false)}
-        onScan={handleScanResult}
-        title={
-          scannerType === "location" ? "Escanear Local" : "Escanear Produto"
-        }
-      />
 
       <FeedbackSnackbar snackbar={snackbar} onClose={handleClose} />
     </Box>
