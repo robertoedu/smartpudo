@@ -4,7 +4,6 @@ import {
   Button,
   Modal,
   Fade,
-  Backdrop,
   Typography,
   IconButton,
   TextField,
@@ -14,9 +13,18 @@ import CloseIcon from "@mui/icons-material/Close";
 import ScanInput from "../ScanInput";
 import api from "../../services/api";
 
-export default function EditLocationModal({ open, location, onClose, onSaved, showSuccess, showError }) {
+export default function EditLocationModal({
+  open,
+  location,
+  onClose,
+  onSaved,
+  showSuccess,
+  showError,
+}) {
   const [editName, setEditName] = useState(location?.name || "");
-  const [editCapacity, setEditCapacity] = useState(location?.capacity ? String(location.capacity) : "");
+  const [editCapacity, setEditCapacity] = useState(
+    location?.capacity ? String(location.capacity) : "",
+  );
 
   const handleClose = () => {
     setEditName("");
@@ -41,15 +49,7 @@ export default function EditLocationModal({ open, location, onClose, onSaved, sh
   };
 
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      closeAfterTransition
-      slots={{ backdrop: Backdrop }}
-      slotProps={{
-        backdrop: { timeout: 500, sx: { backgroundColor: "rgba(0, 0, 0, 0.8)" } },
-      }}
-    >
+    <Modal open={open} onClose={handleClose} closeAfterTransition>
       <Fade in={open}>
         <Box
           sx={{
@@ -84,7 +84,10 @@ export default function EditLocationModal({ open, location, onClose, onSaved, sh
             </Typography>
             <IconButton
               onClick={handleClose}
-              sx={{ color: "text.secondary", "&:hover": { color: "error.main" } }}
+              sx={{
+                color: "text.secondary",
+                "&:hover": { color: "error.main" },
+              }}
             >
               <CloseIcon />
             </IconButton>
@@ -104,7 +107,9 @@ export default function EditLocationModal({ open, location, onClose, onSaved, sh
               fullWidth
               label="Capacidade máxima (opcional)"
               value={editCapacity}
-              onChange={(e) => setEditCapacity(e.target.value.replace(/\D/g, ""))}
+              onChange={(e) =>
+                setEditCapacity(e.target.value.replace(/\D/g, ""))
+              }
               placeholder="Ex: 50"
               helperText="Deixe vazio para remover o limite"
               inputProps={{ inputMode: "numeric" }}
