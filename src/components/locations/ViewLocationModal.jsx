@@ -71,7 +71,7 @@ export default function ViewLocationModal({ open, location, onClose }) {
 
   // Filtra produtos removidos da lista
   const products = (location?.products || []).filter(
-    (product) => !removedProducts.has(product.code)
+    (product) => !removedProducts.has(product.code),
   );
   const visibleProducts =
     rowsPerPage === -1
