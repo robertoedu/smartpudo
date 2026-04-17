@@ -4,7 +4,6 @@ import {
   Button,
   Modal,
   Fade,
-  Backdrop,
   Typography,
   IconButton,
   TextField,
@@ -53,18 +52,7 @@ export default function AddLocationModal({
   };
 
   return (
-    <Modal
-      open={open}
-      onClose={handleClose}
-      closeAfterTransition
-      slots={{ backdrop: Backdrop }}
-      slotProps={{
-        backdrop: {
-          timeout: 500,
-          sx: { backgroundColor: "rgba(0, 0, 0, 0.8)" },
-        },
-      }}
-    >
+    <Modal open={open} onClose={handleClose} closeAfterTransition>
       <Fade in={open}>
         <Box
           sx={{

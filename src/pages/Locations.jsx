@@ -38,6 +38,16 @@ export default function Locations() {
     }
   };
 
+  // Atualiza os dados sem mostrar loading (refresh silencioso)
+  const refreshLocations = async () => {
+    try {
+      const { data } = await api.get("/api/locations");
+      setLocations(data.locations || data || []);
+    } catch (error) {
+      console.error("Erro ao atualizar locais:", error);
+    }
+  };
+
   useEffect(() => {
     fetchLocations();
   }, []);
@@ -47,9 +57,13 @@ export default function Locations() {
     setViewModalOpen(true);
   };
 
-  const handleCloseView = () => {
+  const handleCloseView = (hasChanges) => {
     setViewModalOpen(false);
     setTimeout(() => setSelectedLocation(null), 200);
+    // Atualiza dados silenciosamente se houve mudanças
+    if (hasChanges) {
+      refreshLocations();
+    }
   };
 
   const handleOpenEdit = (location) => {
@@ -93,7 +107,14 @@ export default function Locations() {
 
       {/* Mobile */}
       {!loading && locations.length > 0 && (
-        <Box sx={{ display: { xs: "flex", md: "none" }, flexDirection: "column", gap: 2, mt: 3 }}>
+        <Box
+          sx={{
+            display: { xs: "flex", md: "none" },
+            flexDirection: "column",
+            gap: 2,
+            mt: 3,
+          }}
+        >
           {locations.map((location, index) => (
             <LocationCard
               key={index}
