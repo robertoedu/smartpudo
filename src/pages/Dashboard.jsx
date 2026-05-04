@@ -5,6 +5,7 @@ import CallReceivedIcon from "@mui/icons-material/CallReceived";
 import CallMadeIcon from "@mui/icons-material/CallMade";
 import StatCard from "../components/dashboard/StatCard";
 import DashboardLocationTable from "../components/dashboard/DashboardLocationTable";
+import OldProductsAlert from "../components/dashboard/OldProductsAlert";
 import api from "../services/api";
 
 export default function Dashboard() {
@@ -15,8 +16,10 @@ export default function Dashboard() {
     withdrawnToday: 0,
   });
   const [locations, setLocations] = useState([]);
+  const [oldProducts, setOldProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [locLoading, setLocLoading] = useState(true);
+  const [oldProductsLoading, setOldProductsLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -41,8 +44,20 @@ export default function Dashboard() {
       }
     };
 
+    const fetchOldProducts = async () => {
+      try {
+        const { data } = await api.get("/api/locations/old-products");
+        setOldProducts(data.products || data || []);
+      } catch (error) {
+        console.error("Erro ao buscar produtos antigos:", error);
+      } finally {
+        setOldProductsLoading(false);
+      }
+    };
+
     fetchStats();
     fetchLocations();
+    fetchOldProducts();
   }, []);
 
   return (
@@ -138,6 +153,13 @@ export default function Dashboard() {
           </>
         )}
       </Box>
+
+      {/* Alerta de produtos antigos */}
+      {!oldProductsLoading && oldProducts.length > 0 && (
+        <Box sx={{ mt: 4 }}>
+          <OldProductsAlert products={oldProducts} />
+        </Box>
+      )}
 
       {/* Tabela de disponibilidade — somente desktop */}
       <Box sx={{ display: { xs: "none", md: "block" } }}>
