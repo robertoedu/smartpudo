@@ -1,11 +1,13 @@
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Button, Box, CircularProgress, Typography } from "@mui/material";
+import { Button, Box, CircularProgress, Typography, Alert, Snackbar } from "@mui/material";
 import CallReceivedIcon from "@mui/icons-material/CallReceived";
 import CallMadeIcon from "@mui/icons-material/CallMade";
+import FactCheckIcon from "@mui/icons-material/FactCheck";
 import StatCard from "../components/dashboard/StatCard";
 import DashboardLocationTable from "../components/dashboard/DashboardLocationTable";
 import OldProductsAlert from "../components/dashboard/OldProductsAlert";
+import InventoryReconciliationDialog from "../components/dashboard/InventoryReconciliationDialog";
 import api from "../services/api";
 
 export default function Dashboard() {
@@ -20,6 +22,17 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [locLoading, setLocLoading] = useState(true);
   const [oldProductsLoading, setOldProductsLoading] = useState(true);
+  const [reconciliationOpen, setReconciliationOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const refreshDashboard = async () => {
+    const [{ data: statsData }, { data: locationsData }, { data: oldProductsData }] = await Promise.all([
+      api.get("/api/dashboard/stats"), api.get("/api/locations"), api.get("/api/locations/old-products"),
+    ]);
+    setStats(statsData);
+    setLocations(locationsData.locations || locationsData || []);
+    setOldProducts(oldProductsData.products || oldProductsData || []);
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -154,6 +167,15 @@ export default function Dashboard() {
         )}
       </Box>
 
+      <Box sx={{ mt: 3 }}>
+        <Alert
+          severity="info"
+          action={<Button color="inherit" size="small" startIcon={<FactCheckIcon />} onClick={() => setReconciliationOpen(true)}>Conferir agora</Button>}
+        >
+          O total parece incorreto? Compare o estoque com a lista atual de produtos aguardando retirada.
+        </Alert>
+      </Box>
+
       {/* Alerta de produtos antigos */}
       {!oldProductsLoading && oldProducts.length > 0 && (
         <Box sx={{ mt: 4 }}>
@@ -175,6 +197,18 @@ export default function Dashboard() {
           <DashboardLocationTable locations={locations} />
         )}
       </Box>
+
+      <InventoryReconciliationDialog
+        open={reconciliationOpen}
+        onClose={() => setReconciliationOpen(false)}
+        onCompleted={async (result) => {
+          setSuccessMessage(`${result.removedCount} produto(s) foram marcados como entregues. Restam ${result.remainingCount} em estoque.`);
+          try { await refreshDashboard(); } catch (error) { console.error("Erro ao atualizar dashboard:", error); }
+        }}
+      />
+      <Snackbar open={Boolean(successMessage)} autoHideDuration={6000} onClose={() => setSuccessMessage("")} anchorOrigin={{ vertical: "bottom", horizontal: "center" }}>
+        <Alert severity="success" variant="filled" onClose={() => setSuccessMessage("")}>{successMessage}</Alert>
+      </Snackbar>
     </Box>
   );
 }
