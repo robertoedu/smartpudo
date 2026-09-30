@@ -23,6 +23,7 @@ import PlaceIcon from "@mui/icons-material/Place";
 import SearchIcon from "@mui/icons-material/Search";
 import TvIcon from "@mui/icons-material/Tv";
 import LogoutIcon from "@mui/icons-material/Logout";
+import QrCode2Icon from "@mui/icons-material/QrCode2";
 import { useAuth } from "../hooks/useAuth";
 import AppRoutes from "../app/routes";
 
@@ -32,6 +33,7 @@ const menuItems = [
   { label: "Dashboard", path: "/", icon: <DashboardIcon /> },
   { label: "Receber", path: "/receber", icon: <CallReceivedIcon /> },
   { label: "Retirar", path: "/retirar", icon: <CallMadeIcon /> },
+  { label: "Códigos de barras", path: "/codigos-de-barras", icon: <QrCode2Icon /> },
   { label: "Locais", path: "/locais", icon: <PlaceIcon /> },
   {
     label: "Monitor",

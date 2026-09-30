@@ -378,3 +378,14 @@ button:focus-visible {
   pointer-events: none;
 }
 
+@media print {
+  @page { margin: 10mm; }
+  body { background: #fff !important; }
+  .MuiAppBar-root, .MuiDrawer-root, .no-print { display: none !important; }
+  main.MuiBox-root { padding: 0 !important; margin: 0 !important; }
+  .barcode-page { width: 100%; }
+  .barcode-summary { border: 0 !important; padding: 0 !important; margin-bottom: 8mm !important; }
+  .barcode-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 5mm !important; }
+  .barcode-card { break-inside: avoid; box-shadow: none !important; border: 1px solid #aaa !important; }
+  .barcode-value { color: #000 !important; }
+}
