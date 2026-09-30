@@ -5,6 +5,7 @@ import Dashboard from "../pages/Dashboard";
 import Receive from "../pages/Receive";
 import Withdraw from "../pages/Withdraw";
 import Locations from "../pages/Locations";
+import ProductBarcodes from "../pages/ProductBarcodes";
 
 export default function AppRoutes() {
   return (
@@ -31,6 +32,14 @@ export default function AppRoutes() {
         element={
           <PrivateRoute>
             <Withdraw />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/codigos-de-barras"
+        element={
+          <PrivateRoute>
+            <ProductBarcodes />
           </PrivateRoute>
         }
       />
