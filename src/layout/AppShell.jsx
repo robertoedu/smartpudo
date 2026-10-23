@@ -35,6 +35,7 @@ const menuItems = [
   { label: "Retirar", path: "/retirar", icon: <CallMadeIcon /> },
   { label: "Códigos de barras", path: "/codigos-de-barras", icon: <QrCode2Icon /> },
   { label: "Locais", path: "/locais", icon: <PlaceIcon /> },
+  { label: "Auditoria de romaneio", path: "/auditoria-romaneio", icon: <SearchIcon /> },
   {
     label: "Monitor",
     path: "/monitor",
