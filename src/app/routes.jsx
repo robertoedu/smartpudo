@@ -6,10 +6,12 @@ import Receive from "../pages/Receive";
 import Withdraw from "../pages/Withdraw";
 import Locations from "../pages/Locations";
 import ProductBarcodes from "../pages/ProductBarcodes";
+import RomaneioAudit from "../pages/RomaneioAudit";
 
 export default function AppRoutes() {
   return (
     <Routes>
+      <Route path="/auditoria-romaneio" element={<PrivateRoute><RomaneioAudit /></PrivateRoute>} />
       <Route path="/login" element={<Login />} />
       <Route
         path="/"
