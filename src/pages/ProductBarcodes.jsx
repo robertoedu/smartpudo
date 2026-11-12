@@ -27,6 +27,10 @@ export default function ProductBarcodes() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [productFilter, setProductFilter] = useState("");
+
+  const filter = productFilter.trim();
+  const visibleProducts = result?.products.filter((product) => product.code.includes(filter)) ?? [];
 
   const search = async (event) => {
     event.preventDefault();
@@ -39,6 +43,7 @@ export default function ProductBarcodes() {
       if (endedAt) payload.endedAt = new Date(endedAt).toISOString();
       const { data } = await api.post("/api/products/barcodes/search", payload);
       setResult(data);
+      setProductFilter("");
     } catch (requestError) {
       setResult(null);
       setError(requestError.response?.data?.errors?.[0]?.message || requestError.response?.data?.message || "Não foi possível buscar os produtos.");
@@ -48,7 +53,7 @@ export default function ProductBarcodes() {
   };
 
   const reset = () => {
-    setStartedAt(initialStart()); setEndedAt(""); setResult(null); setError("");
+    setStartedAt(initialStart()); setEndedAt(""); setResult(null); setError(""); setProductFilter("");
   };
 
   return (
@@ -76,18 +81,31 @@ export default function ProductBarcodes() {
           <Paper className="barcode-summary" variant="outlined" sx={{ p: 2, mb: 2 }}>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }} justifyContent="space-between">
               <Box>
-                <Typography variant="h6">{result.count} produto(s) encontrado(s)</Typography>
+                <Typography variant="h6">{visibleProducts.length} de {result.count} produto(s)</Typography>
                 <Typography variant="body2" color="text.secondary">De {formatDate(result.startedAt)} até {formatDate(result.endedAt)}</Typography>
               </Box>
-              {result.count > 0 && <Button className="no-print" variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()}>Imprimir etiquetas</Button>}
+              {visibleProducts.length > 0 && <Button className="no-print" variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()}>Imprimir etiquetas</Button>}
             </Stack>
           </Paper>
 
+          {result.count > 0 && (
+            <TextField
+              className="no-print"
+              label="Filtrar por código do produto"
+              value={productFilter}
+              onChange={(event) => setProductFilter(event.target.value)}
+              fullWidth
+              sx={{ mb: 2 }}
+            />
+          )}
+
           {result.count === 0 ? (
             <Alert severity="warning">Nenhuma entrada de produto foi encontrada nesse período.</Alert>
+          ) : visibleProducts.length === 0 ? (
+            <Alert severity="info">Nenhum produto carregado corresponde ao código informado.</Alert>
           ) : (
             <Box className="barcode-grid" sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(2, 1fr)", lg: "repeat(3, 1fr)" }, gap: 2 }}>
-              {result.products.map((product, index) => (
+              {visibleProducts.map((product, index) => (
                 <Card className="barcode-card" variant="outlined" key={product.code}>
                   <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
